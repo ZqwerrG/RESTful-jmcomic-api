@@ -17,6 +17,8 @@ Serverless 清空 `CACHE_DB`；VPS 必须设置各 worker 共用的持久路径�
 width/w 1–2047、quality/q 1–100，LVGL > PNG > JPEG；透明白底、长图完整等比缩小。
 默认下载 20MiB、解码 3200万像素、响应 4MiB，HTTP 返回完整二进制和长度。
 Cookie/Authorization 响应 private,no-store；错误 no-store；公共图缓存24小时。
+图床按 UA 拦截，requests 默认 UA 直接 403：图片下载统一带浏览器 UA 与 Accept 语言头，
+封面按图片域名列表前 3 个回退，无封面时返回 404 而非 502。
 诊断 `/health/runtime`、X-Cache、原始/实际尺寸。参数见 `.env.example`。
 
 Nginx 将 `/` 转发 `http://127.0.0.1:3002`，传 Host、X-Forwarded-Host、X-Forwarded-Proto，

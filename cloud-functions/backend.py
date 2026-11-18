@@ -93,10 +93,28 @@ def album(item_id):
         tags=info["tags"],total_chapters=len(info["episodes"]),cover=public_url()+f"/album/{item_id}/cover")
 
 
+def cover_source(item_id):
+    # 域名列表是打乱顺序的，单个域名偶发不可达时不至于整片封面失败。
+    domains = list(dict.fromkeys(JmModuleConfig.DOMAIN_IMAGE_LIST or []))[:3]
+    if not domains:
+        raise ApiError(502,"图片域名未配置")
+    fallback = ApiError(404,"封面不存在")
+    for domain in domains:
+        try:
+            body = download(f"https://{domain}/media/albums/{item_id}_3x4.jpg")
+        except ApiError as error:
+            fallback = error
+            if error.status not in (403,404,410,502,503):
+                raise
+            continue
+        if body:
+            return body
+    raise fallback
+
+
 @app.get("/album/<int:item_id>/cover")
 def cover(item_id):
-    domain = JmModuleConfig.DOMAIN_IMAGE_LIST[0]
-    return serve(["cover",item_id],lambda:download(f"https://{domain}/media/albums/{item_id}_3x4.jpg"),200)
+    return serve(["cover",item_id],lambda:cover_source(item_id),200)
 
 
 @memoize(60)

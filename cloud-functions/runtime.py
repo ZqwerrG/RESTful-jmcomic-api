@@ -221,11 +221,19 @@ class Http:
 http = Http()
 
 
+# 图床按 UA 拦截：requests 默认的 python-requests/x 会直接 403，图片请求统一伪装成浏览器。
+IMAGE_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+    "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+}
+
+
 def download(url, headers=None):
     if urlsplit(url).scheme not in ("https", "http"):
         raise ApiError(400, "无效图片地址")
     try:
-        response = http.get(url, headers=headers)
+        response = http.get(url, headers={**IMAGE_HEADERS, **(headers or {})})
         if response.status_code != 200:
             raise ApiError(response.status_code if response.status_code in (403,404,410,429) else 502, "图片上游错误", response.headers.get("Retry-After", "2"))
         return response.content
