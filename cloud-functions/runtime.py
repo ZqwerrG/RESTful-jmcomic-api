@@ -17,7 +17,7 @@ import requests as network
 from flask import Flask, Response, g, has_request_context, jsonify, request
 from PIL import Image
 
-VERSION = "indexed8-v2"
+VERSION = "indexed8-v3"
 
 
 class ApiError(Exception):
@@ -188,7 +188,14 @@ class Cache:
 
 cache = Cache()
 local = threading.local()
-cold = threading.BoundedSemaphore(int(os.environ.get("IMAGE_CONCURRENCY", "1")))
+cold = threading.BoundedSemaphore(max(1, int(os.environ.get("IMAGE_CONCURRENCY", "1"))))
+# 封面是几十 KB 的小图，页图是整页大图；两者共用页图预算时，列表页一次回源十几个封面会互相挤成 503。
+# 车道：本进程并发信号量、跨进程槽位数、排队秒数。
+LANES = {
+    "page": (cold, max(1, int(os.environ.get("IMAGE_GLOBAL_CONCURRENCY", "2"))), 1),
+    "cover": (threading.BoundedSemaphore(max(1, int(os.environ.get("COVER_CONCURRENCY", "6")))),
+              max(1, int(os.environ.get("COVER_GLOBAL_CONCURRENCY", "12"))), 8),
+}
 
 
 class Http:
@@ -288,16 +295,17 @@ def process(image, options):
     return body, {"type":{"jpeg":"image/jpeg","png":"image/png","lvgl":"application/octet-stream"}[fmt],"original":f"{ow}x{oh}","actual":f"{size[0]}x{size[1]}"}
 
 
-def serve(value, loader, default=600, ttl=86400):
+def serve(value, loader, default=600, ttl=86400, lane="page"):
     options = params(default)
     key = cache.key([VERSION,value,scope(),options])
+    gate, slots, wait = LANES[lane]
     def generate():
-        if not cold.acquire(timeout=min(1,budget())):
+        if not gate.acquire(timeout=min(wait,budget())):
             raise ApiError(503,"图片处理繁忙")
         owner, slot = uuid.uuid4().hex, None
         try:
-            for i in range(int(os.environ.get("IMAGE_GLOBAL_CONCURRENCY","2"))):
-                candidate = cache.key(["slot",i])
+            for i in range(slots):
+                candidate = cache.key([lane,"slot",i])
                 if cache.claim(candidate,owner):
                     slot = candidate
                     break
@@ -311,7 +319,7 @@ def serve(value, loader, default=600, ttl=86400):
         finally:
             if slot:
                 cache.release(slot,owner)
-            cold.release()
+            gate.release()
     packed, hit = cache.load(key,generate,ttl)
     n = struct.unpack("<I",packed[:4])[0]
     info,body = json.loads(packed[4:4+n]),packed[4+n:]
@@ -375,5 +383,6 @@ def create_app(name):
         return jsonify(code=e.status,message=e.message),e.status,{"Retry-After":str(e.retry_after)}
     @app.get("/health/runtime")
     def runtime_health():
-        return jsonify(status="ok",processor=VERSION,cache="sqlite" if cache.path else "memory",coordination="redis" if cache.redis else "sqlite" if cache.path else "process",memory_bytes=cache.size)
+        return jsonify(status="ok",processor=VERSION,cache="sqlite" if cache.path else "memory",coordination="redis" if cache.redis else "sqlite" if cache.path else "process",memory_bytes=cache.size,
+                       lanes={name:{"slots":slots,"wait":wait} for name,(gate,slots,wait) in LANES.items()})
     return app
