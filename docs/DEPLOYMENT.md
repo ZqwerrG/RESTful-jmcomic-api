@@ -19,6 +19,8 @@ width/w 1–2047、quality/q 1–100，LVGL > PNG > JPEG；透明白底、长图
 Cookie/Authorization 响应 private,no-store；错误 no-store；公共图缓存24小时。
 图床按 UA 拦截，requests 默认 UA 直接 403：图片下载统一带浏览器 UA 与 Accept 语言头，
 封面按图片域名列表前 3 个回退，无封面时返回 404 而非 502。
+封面与页图分车道：封面 `COVER_CONCURRENCY`/`COVER_GLOBAL_CONCURRENCY` 默认 6/12、可排队8秒，
+页图 `IMAGE_CONCURRENCY`/`IMAGE_GLOBAL_CONCURRENCY` 仍为 1/2、排队1秒后 503。
 诊断 `/health/runtime`、X-Cache、原始/实际尺寸。参数见 `.env.example`。
 
 Nginx 将 `/` 转发 `http://127.0.0.1:3002`，传 Host、X-Forwarded-Host、X-Forwarded-Proto，

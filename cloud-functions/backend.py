@@ -114,7 +114,8 @@ def cover_source(item_id):
 
 @app.get("/album/<int:item_id>/cover")
 def cover(item_id):
-    return serve(["cover",item_id],lambda:cover_source(item_id),200)
+    # 封面走独立车道：列表页会同时回源十几张封面，不能被页图的并发预算挤成 503。
+    return serve(["cover",item_id],lambda:cover_source(item_id),200,ttl=604800,lane="cover")
 
 
 @memoize(60)
